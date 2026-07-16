@@ -1,0 +1,14 @@
+{
+  "name": "self-improving-harness-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live demos accompanying the self-improving-harness slide deck. Requires Python 3.10+ on PATH; no npm packages are installed.",
+  "scripts": {
+    "demo": "python3 demo/run.py",
+    "demo:1": "python3 demo/run.py 1",
+    "demo:2": "python3 demo/run.py 2",
+    "demo:3": "python3 demo/run.py 3",
+    "demo:all": "python3 demo/run.py all",
+    "slides": "node scripts/open-slides.js"
+  }
+}

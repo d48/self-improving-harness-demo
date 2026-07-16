@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A Primer on Self-Improving Agent Harnesses</title>
+<style>
+:root {
+  --ground: #10141C;
+  --panel: #1A2029;
+  --panel-2: #222A36;
+  --line: #313B4A;
+  --text: #E8E6DF;
+  --muted: #8B93A1;
+  --amber: #E8A33D;
+  --cyan: #5FB4C9;
+  --good: #6FBF73;
+  --bad: #D9705F;
+  --sans: "Avenir Next", "Avenir", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --serif: "Charter", "Iowan Old Style", Georgia, serif;
+  --mono: "SF Mono", "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--serif);
+  overflow: hidden;
+}
+#stage {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(1100px 700px at 78% -10%, rgba(95,180,201,.055), transparent 60%);
+}
+.slide {
+  width: 960px; height: 540px;
+  padding: 52px 64px 60px;
+  display: none;
+  flex-direction: column;
+  position: absolute;
+  transform: scale(var(--scale, 1));
+}
+.slide.active { display: flex; }
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 10px;
+}
+h1 {
+  font-family: var(--sans); font-weight: 700; font-size: 52px;
+  line-height: 1.08; letter-spacing: -.015em; text-wrap: balance;
+}
+h2 {
+  font-family: var(--sans); font-weight: 700; font-size: 30px;
+  line-height: 1.15; letter-spacing: -.01em; text-wrap: balance;
+  margin-bottom: 20px;
+}
+p, li { font-size: 17px; line-height: 1.5; }
+.lede { font-size: 20px; color: var(--muted); max-width: 40ch; }
+ul.points { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+ul.points li { padding-left: 20px; position: relative; max-width: 62ch; }
+ul.points li::before {
+  content: ""; position: absolute; left: 0; top: .55em;
+  width: 8px; height: 2px; background: var(--amber);
+}
+strong { color: var(--amber); font-weight: 600; }
+em { font-style: italic; color: var(--cyan); }
+.cols { display: flex; gap: 36px; flex: 1; min-height: 0; align-items: stretch; }
+.col { flex: 1; min-width: 0; }
+.col.narrow { flex: 0 0 340px; }
+.diagram { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.diagram svg { max-width: 100%; max-height: 100%; }
+svg text { font-family: var(--mono); fill: var(--text); }
+svg .lbl { font-size: 12.5px; }
+svg .sm { font-size: 10.5px; fill: var(--muted); }
+svg .acc { fill: var(--amber); }
+svg .cy { fill: var(--cyan); }
+svg .box { fill: var(--panel); stroke: var(--line); rx: 6; }
+svg .boxa { fill: var(--panel-2); stroke: var(--amber); rx: 6; }
+svg .boxc { fill: var(--panel-2); stroke: var(--cyan); rx: 6; }
+svg .wire { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+svg .wirea { stroke: var(--amber); stroke-width: 1.6; fill: none; }
+svg .wirec { stroke: var(--cyan); stroke-width: 1.6; fill: none; }
+svg .wireg { stroke: var(--good); stroke-width: 1.6; fill: none; }
+svg .wireb { stroke: var(--bad); stroke-width: 1.6; fill: none; }
+.demo-chip {
+  margin-top: auto; align-self: flex-start;
+  font-family: var(--mono); font-size: 13px;
+  background: var(--panel-2); border: 1px solid var(--amber);
+  border-radius: 4px; padding: 8px 14px; color: var(--amber);
+}
+.demo-chip::before { content: "▶ live demo  "; color: var(--muted); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; font-size: 15px; }
+.kv dt { font-family: var(--mono); color: var(--cyan); font-size: 13px; padding-top: 2px; }
+.kv dd { color: var(--text); max-width: 52ch; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); text-align: left; padding: 6px 14px 6px 0; border-bottom: 1px solid var(--line);
+}
+td { padding: 7px 14px 7px 0; border-bottom: 1px solid rgba(49,59,74,.5); vertical-align: top; }
+td.mono, .mono { font-family: var(--mono); font-size: 13px; }
+td.mono { color: var(--cyan); white-space: nowrap; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.foot {
+  position: absolute; left: 64px; right: 64px; bottom: 22px;
+  display: flex; justify-content: space-between;
+  font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .08em;
+}
+aside.notes { display: none; }
+#notes {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  background: rgba(16,20,28,.97); border-top: 2px solid var(--amber);
+  padding: 18px 48px 22px; max-height: 38vh; overflow-y: auto;
+  font-family: var(--sans); font-size: 15px; line-height: 1.55; color: var(--text);
+  display: none;
+}
+#notes.open { display: block; }
+#notes .tag { font-family: var(--mono); font-size: 11px; letter-spacing: .15em; color: var(--amber); text-transform: uppercase; display: block; margin-bottom: 8px; }
+#notes p + p { margin-top: 8px; }
+#overview {
+  position: fixed; inset: 0; z-index: 40; background: rgba(16,20,28,.98);
+  display: none; overflow-y: auto; padding: 48px;
+}
+#overview.open { display: block; }
+#overview .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+#overview .card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 14px 16px; cursor: pointer; font-family: var(--sans);
+}
+#overview .card:hover, #overview .card:focus { border-color: var(--amber); outline: none; }
+#overview .card .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+#overview .card .e { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--amber); margin: 6px 0 4px; }
+#overview .card .t { font-size: 15px; font-weight: 600; line-height: 1.25; }
+#hud {
+  position: fixed; right: 20px; bottom: 14px; z-index: 20;
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+}
+#bar { position: fixed; left: 0; bottom: 0; height: 3px; background: var(--amber); z-index: 25; transition: width .2s ease; }
+#help {
+  position: fixed; left: 20px; bottom: 14px; z-index: 20;
+  font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .05em;
+}
+.title-slide { justify-content: center; }
+.title-slide .eyebrow { font-size: 13px; }
+.byline { margin-top: 26px; font-family: var(--mono); font-size: 13px; color: var(--muted); line-height: 1.8; }
+.byline b { color: var(--cyan); font-weight: 500; }
+.byline a { color: var(--amber); font-weight: 500; text-decoration: none; border-bottom: 1px solid rgba(232,163,61,.4); }
+.byline a:hover, .byline a:focus-visible { border-bottom-color: var(--amber); }
+blockquote {
+  border-left: 3px solid var(--cyan); padding: 4px 0 4px 20px;
+  font-size: 19px; line-height: 1.5; font-style: italic; max-width: 58ch; color: var(--text);
+}
+blockquote footer { font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 10px; }
+.badpill, .goodpill {
+  display: inline-block; font-family: var(--mono); font-size: 11px; border-radius: 3px;
+  padding: 1px 7px; vertical-align: 1px;
+}
+.badpill { color: var(--bad); border: 1px solid var(--bad); }
+.goodpill { color: var(--good); border: 1px solid var(--good); }
+.codebox {
+  font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 14px 18px; overflow-x: auto; white-space: pre;
+}
+.codebox .c { color: var(--muted); }
+.codebox .a { color: var(--amber); }
+.codebox .g { color: var(--good); }
+@media (prefers-reduced-motion: reduce) {
+  #bar { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <marker id="ar-m" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#8B93A1"/></marker>
+    <marker id="ar-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#E8A33D"/></marker>
+    <marker id="ar-c" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#5FB4C9"/></marker>
+    <marker id="ar-g" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#6FBF73"/></marker>
+    <marker id="ar-b" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#D9705F"/></marker>
+  </defs>
+</svg>
+
+<div id="stage">
+
+<!-- 1 · TITLE -->
+<section class="slide title-slide" data-eyebrow="techtalks · july 2026">
+  <div class="eyebrow">A walkthrough of Ben Dickson's article · TechTalks · July 2026</div>
+  <h1>A Primer on<br>Self-Improving Agent Harnesses</h1>
+  <p class="lede" style="margin-top:18px">Agents that read their own execution traces and rewrite their own scaffolding — no retraining, no weight updates.</p>
+  <div class="byline">source: <b>bdtechtalks.substack.com/p/a-primer-on-self-improving-agent-harnesses</b><br>code + slides: <a href="https://github.com/d48/self-improving-harness-demo" target="_blank" rel="noopener">github.com/d48/self-improving-harness-demo</a><br>clone it: <b>git clone https://github.com/d48/self-improving-harness-demo</b> — three live demos, zero dependencies</div>
+  <aside class="notes">
+    <p>Framing: this article is the "what's next" after harness engineering became a recognized discipline. If the sibling talk (Lilian Weng's "Harness Engineering for Self-Improvement") was about *what* a harness is and the three design patterns behind Claude Code / Codex, this one is about the *machinery that edits the harness itself* — Self-Harness, HarnessX, AEGIS, and harness-model co-evolution.</p>
+    <p>Point people at the repo now: github.com/d48/self-improving-harness-demo — stdlib-only Python, no API keys, three runnable demos.</p>
+  </aside>
+</section>
+
+<!-- 2 · WHY -->
+<section class="slide" data-eyebrow="core thesis">
+  <div class="eyebrow">Core thesis</div>
+  <h2>Retraining is expensive. Editing the harness is not.</h2>
+  <div class="cols">
+    <div class="col">
+      <blockquote>The harness functions as “the operating system for a model” — providing system structure beyond raw reasoning.
+        <footer>— Ben Dickson, “A Primer on Self-Improving Agent Harnesses”, TechTalks, Jul 2026</footer>
+      </blockquote>
+      <ul class="points" style="margin-top:22px">
+        <li>New frameworks let an agent analyze its <strong>own execution traces</strong> and propose targeted patches to its own code or prompts.</li>
+        <li>Stability comes from <strong>regression testing</strong>, not from trusting the agent's judgment about its own edit.</li>
+      </ul>
+    </div>
+    <div class="col narrow">
+      <div class="codebox"><span class="c"># the shift this article tracks:</span>
+retrain weights     <span class="c">→ slow, costly</span>
+edit the harness    <span class="a">→ fast, cheap,</span>
+                    <span class="a">  reviewable</span></div>
+      <p style="margin-top:16px; font-size:15px; color:var(--muted)">Same idea as harness engineering generally — but now the editor is the agent itself, running continuously, not a human at design time.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>This is a direct escalation from prompt engineering → harness engineering → the harness editing itself. The economic argument is the whole reason this matters to working engineers: a targeted code/prompt patch, gated by tests, is orders of magnitude cheaper than a training run.</p>
+  </aside>
+</section>
+
+<!-- 3 · ARCHITECTURE -->
+<section class="slide" data-eyebrow="foundation">
+  <div class="eyebrow">Agent harness architecture</div>
+  <h2>What a modern harness actually runs</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 860 260">
+      <rect x="30" y="100" width="150" height="60" class="box"/>
+      <text x="105" y="126" text-anchor="middle" class="lbl">gather context</text>
+      <text x="105" y="144" text-anchor="middle" class="sm">memory · intent</text>
+
+      <rect x="240" y="100" width="150" height="60" class="boxa"/>
+      <text x="315" y="126" text-anchor="middle" class="lbl acc">tool action</text>
+      <text x="315" y="144" text-anchor="middle" class="sm">execute a step</text>
+
+      <rect x="450" y="100" width="150" height="60" class="boxc"/>
+      <text x="525" y="126" text-anchor="middle" class="lbl cy">observe result</text>
+      <text x="525" y="144" text-anchor="middle" class="sm">real feedback</text>
+
+      <rect x="660" y="100" width="150" height="60" class="box"/>
+      <text x="735" y="126" text-anchor="middle" class="lbl">adjust approach</text>
+      <text x="735" y="144" text-anchor="middle" class="sm">next-turn plan</text>
+
+      <path class="wire"  marker-end="url(#ar-m)" d="M180,130 L236,130"/>
+      <path class="wirea" marker-end="url(#ar-a)" d="M390,130 L446,130"/>
+      <path class="wirec" marker-end="url(#ar-c)" d="M600,130 L656,130"/>
+      <path class="wire"  marker-end="url(#ar-m)" d="M735,100 C735,40 105,40 105,96"/>
+      <text x="420" y="30" text-anchor="middle" class="sm">the agentic loop — continuous, not a single pass</text>
+
+      <rect x="240" y="200" width="380" height="50" class="box"/>
+      <text x="430" y="222" text-anchor="middle" class="lbl">multi-agent orchestration</text>
+      <text x="430" y="240" text-anchor="middle" class="sm">specialized subagents for testing &amp; debugging, coordinated in parallel</text>
+    </svg>
+  </div>
+  <aside class="notes">
+    <p>The harness is "the operating system for a model" — it provides structure beyond raw reasoning. Modern harnesses go beyond a single loop: they orchestrate specialized subagents (a tester, a debugger) running in parallel, and they manage memory sophisticated enough to track user intent across a long session while those parallel processes run.</p>
+    <p>This slide is the baseline the rest of the deck builds on — Self-Harness, HarnessX, and co-evolution are all techniques for automatically *improving* this architecture.</p>
+  </aside>
+</section>
+
+<!-- 4 · WEAKNESS MINING -->
+<section class="slide" data-eyebrow="self-harness / 1">
+  <div class="eyebrow">Self-Harness framework — stage 1</div>
+  <h2>Weakness mining: find the model-specific failure, not the generic bug</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 860 220">
+      <rect x="30" y="80" width="200" height="70" class="boxc"/>
+      <text x="130" y="108" text-anchor="middle" class="lbl cy">eval dataset</text>
+      <text x="130" y="126" text-anchor="middle" class="sm">tasks the agent runs against</text>
+
+      <rect x="330" y="80" width="200" height="70" class="boxc"/>
+      <text x="430" y="108" text-anchor="middle" class="lbl cy">execution logs</text>
+      <text x="430" y="126" text-anchor="middle" class="sm">every tool call, error, response</text>
+
+      <rect x="630" y="80" width="200" height="70" class="boxa"/>
+      <text x="730" y="108" text-anchor="middle" class="lbl acc">clustered weaknesses</text>
+      <text x="730" y="126" text-anchor="middle" class="sm">grouped by failure pattern</text>
+
+      <path class="wirec" marker-end="url(#ar-c)" d="M230,115 L326,115"/>
+      <path class="wirea" marker-end="url(#ar-a)" d="M530,115 L626,115"/>
+      <text x="430" y="30" text-anchor="middle" class="sm">the agent runs itself against the eval set and logs everything, then mines the logs for patterns</text>
+    </svg>
+  </div>
+  <aside class="notes">
+    <p>The agent executes against an evaluation dataset and generates detailed logs capturing every tool call, error, and response. The key distinction from ordinary bug-tracking: the analysis isolates weaknesses unique to a particular model's behavior, not generic bugs any implementation might have. Two different base models running the same harness will surface different clusters.</p>
+  </aside>
+</section>
+
+<!-- 5 · PROPOSAL + VALIDATION -->
+<section class="slide" data-eyebrow="self-harness / 2-3">
+  <div class="eyebrow">Self-Harness framework — stages 2 &amp; 3</div>
+  <h2>Propose a surgical fix, then gate it with regression tests</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 860 220">
+      <rect x="80" y="70" width="280" height="80" class="boxc"/>
+      <text x="220" y="98" text-anchor="middle" class="lbl cy">2 · harness proposal</text>
+      <text x="220" y="118" text-anchor="middle" class="sm">agent-as-proposer: a minimal,</text>
+      <text x="220" y="134" text-anchor="middle" class="sm">targeted edit to code or prompt</text>
+
+      <rect x="500" y="70" width="280" height="80" class="boxa"/>
+      <text x="640" y="98" text-anchor="middle" class="lbl acc">3 · proposal validation</text>
+      <text x="640" y="118" text-anchor="middle" class="sm">strict regression testing —</text>
+      <text x="640" y="134" text-anchor="middle" class="sm">reject if anything prior breaks</text>
+
+      <path class="wirec" marker-end="url(#ar-c)" d="M360,110 L496,110"/>
+      <path class="wireg" marker-end="url(#ar-g)" d="M640,150 C640,190 220,190 220,154"/>
+      <text x="430" y="190" text-anchor="middle" class="sm" fill="#6FBF73">accept → merge, mine again · reject → log it, harness unchanged</text>
+    </svg>
+  </div>
+  <p style="margin-top:10px; font-size:14px; color:var(--muted)">This exact propose → evaluate → accept loop — including a reward-hack proposal caught by a held-out gate — is fully demoed in the sibling repo: <b>github.com/d48/harness-engineering-demo</b>, demo 4.</p>
+  <aside class="notes">
+    <p>The proposal stays bounded and reviewable on purpose: one narrow edit at a time, not a rewrite. Validation is the safety rail — it re-runs the full suite, not just the targeted cluster, and rejects any edit that fixes the target case while breaking something that used to pass. This evaluation gate is what prevents cascading failures.</p>
+    <p>We don't re-demo this exact loop here since the companion repo already has a live version of it (demo 4) — instead this repo's demos push into the newer material: composable architecture, the AEGIS pipeline, and co-evolution.</p>
+  </aside>
+</section>
+
+<!-- 6 · HARNESSX COMPOSABLE -->
+<section class="slide" data-eyebrow="harnessx / 1">
+  <div class="eyebrow">HarnessX — composable optimization architecture</div>
+  <h2>Harnesses as Lego blocks: swap one, don't disturb the rest</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 860 230">
+      <rect x="20"  y="90" width="180" height="66" class="boxa"/>
+      <text x="110" y="118" text-anchor="middle" class="lbl acc">context assembly</text>
+      <text x="110" y="136" text-anchor="middle" class="sm">← swapped in the demo</text>
+
+      <rect x="230" y="90" width="180" height="66" class="box"/>
+      <text x="320" y="122" text-anchor="middle" class="lbl">memory management</text>
+
+      <rect x="440" y="90" width="180" height="66" class="box"/>
+      <text x="530" y="122" text-anchor="middle" class="lbl">tool ecosystem</text>
+
+      <rect x="650" y="90" width="180" height="66" class="box"/>
+      <text x="740" y="122" text-anchor="middle" class="lbl">control flow</text>
+
+      <text x="430" y="40" text-anchor="middle" class="sm">independent processors, each plugged into a precise lifecycle hook</text>
+      <text x="430" y="200" text-anchor="middle" class="sm acc">a contract-breaking processor is rejected at plug-in time, before it ever touches traffic</text>
+    </svg>
+  </div>
+  <div class="demo-chip">python3 demo/run.py 1 — hot-swap the context hook; the untouched hooks' call counts prove nothing else moved</div>
+  <aside class="notes">
+    <p>HarnessX treats harnesses as formal software artifacts with distinct components — context assembly, memory management, tool ecosystems, control flow — implemented as independent processors. They plug into precise lifecycle hooks, like modular Lego blocks, enabling component swapping without pipeline disruption.</p>
+    <p>DEMO 1 makes "without pipeline disruption" a checkable claim rather than a slogan: it instruments every hook's call count, swaps only the context-assembly processor, and then verifies the other three hooks fired exactly the same number of times, in the same order, as before the swap. It also demonstrates the contract check: a processor with the wrong return type is rejected via a canary call before it's ever installed.</p>
+  </aside>
+</section>
+
+<!-- 7 · AEGIS -->
+<section class="slide" data-eyebrow="harnessx / 2">
+  <div class="eyebrow">HarnessX — the AEGIS evolution engine</div>
+  <h2>Four stages, and a Critic that doesn't just watch the scoreboard</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 860 220">
+      <rect x="20"  y="70" width="180" height="70" class="boxc"/>
+      <text x="110" y="98" text-anchor="middle" class="lbl cy">Digester</text>
+      <text x="110" y="116" text-anchor="middle" class="sm">isolates failures</text>
+
+      <rect x="240" y="70" width="180" height="70" class="boxc"/>
+      <text x="330" y="98" text-anchor="middle" class="lbl cy">Planner</text>
+      <text x="330" y="116" text-anchor="middle" class="sm">devises a bounded strategy</text>
+
+      <rect x="460" y="70" width="180" height="70" class="boxc"/>
+      <text x="550" y="98" text-anchor="middle" class="lbl cy">Evolver</text>
+      <text x="550" y="116" text-anchor="middle" class="sm">edits + isolated testing</text>
+
+      <rect x="680" y="70" width="160" height="70" class="boxa"/>
+      <text x="760" y="98" text-anchor="middle" class="lbl acc">Critic</text>
+      <text x="760" y="116" text-anchor="middle" class="sm">deterministic gates</text>
+
+      <path class="wirec" marker-end="url(#ar-c)" d="M200,105 L236,105"/>
+      <path class="wirec" marker-end="url(#ar-c)" d="M420,105 L456,105"/>
+      <path class="wirec" marker-end="url(#ar-c)" d="M640,105 L676,105"/>
+      <path class="wireb" marker-end="url(#ar-b)" d="M760,140 C760,180 110,180 110,144"/>
+      <text x="430" y="190" text-anchor="middle" class="sm" fill="#D9705F">reject → static source scan caught a memorized fix a regression check alone would miss</text>
+    </svg>
+  </div>
+  <div class="demo-chip">python3 demo/run.py 2 — a candidate rule that memorizes its inputs passes every metric, and still gets caught</div>
+  <aside class="notes">
+    <p>A four-stage multi-agent pipeline: Digester isolates failures, Planner devises strategies, Evolver generates code edits with isolated testing, and Critic detects reward hacking through deterministic gates rejecting performance regressions.</p>
+    <p>DEMO 2's twist: the reward-hacking candidate does NOT regress the held-out suite (the case it can't handle was already failing before, so nothing gets numerically worse) — a pure regression gate would accept it. The Critic in this demo adds a second, orthogonal signal: it statically scans the candidate rule's own source code for literal strings copied from the held-in set, and rejects on that basis alone. That's the article's point made concrete: reward hacking needs a detector that looks at the diff, not just the scoreboard.</p>
+  </aside>
+</section>
+
+<!-- 8 · CO-EVOLUTION -->
+<section class="slide" data-eyebrow="co-evolution">
+  <div class="eyebrow">Harness-model co-evolution</div>
+  <h2>One replay buffer, two learners, GRPO-style updates</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 860 230">
+      <rect x="40" y="30" width="230" height="60" class="boxc"/>
+      <text x="155" y="55" text-anchor="middle" class="lbl cy">harness track</text>
+      <text x="155" y="73" text-anchor="middle" class="sm">context-strategy policy</text>
+
+      <rect x="40" y="140" width="230" height="60" class="boxc"/>
+      <text x="155" y="165" text-anchor="middle" class="lbl cy">model track</text>
+      <text x="155" y="183" text-anchor="middle" class="sm">response-style policy</text>
+
+      <rect x="440" y="85" width="240" height="60" class="boxa"/>
+      <text x="560" y="110" text-anchor="middle" class="lbl acc">shared replay buffer</text>
+      <text x="560" y="128" text-anchor="middle" class="sm">(config, reward, advantage)</text>
+
+      <rect x="740" y="85" width="100" height="60" class="box"/>
+      <text x="790" y="112" text-anchor="middle" class="lbl">group</text>
+      <text x="790" y="128" text-anchor="middle" class="sm">reward - mean</text>
+
+      <path class="wirec" marker-end="url(#ar-c)" d="M270,60 C360,60 380,100 436,108"/>
+      <path class="wirec" marker-end="url(#ar-c)" d="M270,170 C360,170 380,125 436,116"/>
+      <path class="wirea" marker-end="url(#ar-a)" d="M680,110 L736,112"/>
+      <text x="430" y="215" text-anchor="middle" class="sm acc">GRPO: reward relative to the sampled group's own mean — no absolute reward model needed</text>
+    </svg>
+  </div>
+  <div class="demo-chip">python3 demo/run.py 3 — two policies converge purely from group-relative advantage, held-out reward 0.56 → 1.00</div>
+  <aside class="notes">
+    <p>HarnessX interleaves harness improvement with model training using a shared replay buffer and cross-harness Group Relative Policy Optimization. GRPO scores an AI's output by generating multiple potential answers and evaluating performance relative to the group average — no absolute reward model is required, only relative standing inside a sampled group.</p>
+    <p>DEMO 3 runs a real (if toy) instance: a harness-track policy over context strategies and a model-track policy over response styles both sample a group of joint configs each round, score them for real against a task suite, and update from the same per-sample advantage. Neither track is ever told the "correct" gene — both discover the dominant joint config purely from relative standing, and it measurably generalizes better on held-out tasks than the untrained uniform policy.</p>
+  </aside>
+</section>
+
+<!-- 9 · PARADIGM SHIFT -->
+<section class="slide" data-eyebrow="paradigm shift">
+  <div class="eyebrow">Where this optimization actually happens</div>
+  <h2>From loop engineering at runtime to continual learning at meta-runtime</h2>
+  <div class="cols">
+    <div class="col">
+      <p class="eyebrow" style="color:var(--muted)">before</p>
+      <div class="codebox">optimization happens in:
+  <span class="c">the user's session</span>
+  <span class="c">→ one conversation,</span>
+  <span class="c">   then it's gone</span></div>
+    </div>
+    <div class="col">
+      <p class="eyebrow">what these frameworks change</p>
+      <div class="codebox">optimization happens in:
+  <span class="a">the deployment environment</span>
+  <span class="a">→ persists across sessions,</span>
+  <span class="a">   compounds over time</span></div>
+    </div>
+  </div>
+  <p style="margin-top:18px; font-size:15px; color:var(--muted)">Agents safely rewrite their own scaffolding without touching base-model weights — an “evaluation architecture acts as a seesaw, balancing new feature adaptation against strict regression testing.”</p>
+  <aside class="notes">
+    <p>The migration is from application runtime (user sessions, where "loop engineering" tunes one conversation) to meta-runtime (the deployment environment itself, where the harness accumulates improvements across every session that ran against it). That's what makes this "continual learning" rather than "a clever prompt trick": the adaptation persists and compounds, gated the whole time by the same regression-testing discipline from the Self-Harness slides.</p>
+    <p>The seesaw metaphor is the article's own closing image for this slide — it's the same tension the whole deck has been building: adapt to new, real-world failure patterns, without ever letting that adaptation erode what already worked.</p>
+  </aside>
+</section>
+
+<!-- 10 · TAKEAWAYS -->
+<section class="slide" data-eyebrow="takeaways">
+  <div class="eyebrow">Takeaways for working engineers</div>
+  <h2>What to steal for your own systems</h2>
+  <ul class="points" style="font-size:15px; gap:8px; line-height:1.4">
+    <li><strong>Log everything, then mine it.</strong> Weakness mining only works if your traces capture every tool call, error, and response — not just the final outcome.</li>
+    <li><strong>Bound every proposal.</strong> One narrow, reviewable edit at a time beats a rewrite you can't audit.</li>
+    <li><strong>Never trust one gate.</strong> A regression check alone can miss a hack that doesn't happen to touch the held-out set — pair it with something structural, like a static scan of the diff.</li>
+    <li><strong>Design for composability.</strong> If your harness is one monolithic prompt, you can't hot-swap anything — components need real seams and enforced contracts.</li>
+    <li><strong>Relative signal is enough.</strong> GRPO's whole trick is that you don't need an absolute reward model — reward minus the group's own mean will do.</li>
+    <li><strong>Move optimization to the meta-runtime.</strong> Improvements that live only inside one session evaporate; put the loop where it can compound across sessions.</li>
+  </ul>
+  <div class="byline" style="margin-top:6px; line-height:1.4">article: <b>bdtechtalks.substack.com/p/a-primer-on-self-improving-agent-harnesses</b> · code: <a href="https://github.com/d48/self-improving-harness-demo" target="_blank" rel="noopener">github.com/d48/self-improving-harness-demo</a></div>
+  <aside class="notes">
+    <p>Close by connecting back to the sibling talk: harness engineering established that the system around the model is a first-class object of optimization. This article's contribution is showing that object being edited by the agent itself, live, with the same engineering discipline (bounded diffs, regression gates, static checks) a human reviewer would insist on.</p>
+    <p>Send people to the repo: github.com/d48/self-improving-harness-demo. All three demos run locally off the Python standard library — no signup, no API key.</p>
+  </aside>
+</section>
+
+</div>
+
+<div id="notes"><span class="tag">speaker notes — N to hide</span><div id="notes-body"></div></div>
+<div id="overview"><div class="grid" id="overview-grid"></div></div>
+<div id="bar"></div>
+<div id="hud"></div>
+<div id="help">← → navigate · N notes · O overview</div>
+
+<script>
+(function () {
+  var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+  var hud = document.getElementById("hud");
+  var bar = document.getElementById("bar");
+  var notes = document.getElementById("notes");
+  var notesBody = document.getElementById("notes-body");
+  var overview = document.getElementById("overview");
+  var grid = document.getElementById("overview-grid");
+  var current = 0;
+
+  slides.forEach(function (slide, i) {
+    var foot = document.createElement("div");
+    foot.className = "foot";
+    foot.innerHTML = "<span>self-improving agent harnesses — ben dickson · jul 2026</span><span>" +
+      (i + 1) + " / " + slides.length + "</span>";
+    slide.appendChild(foot);
+
+    var card = document.createElement("div");
+    card.className = "card";
+    card.tabIndex = 0;
+    var title = slide.querySelector("h1, h2");
+    card.innerHTML = '<div class="n">' + String(i + 1).padStart(2, "0") + '</div>' +
+      '<div class="e">' + (slide.dataset.eyebrow || "") + '</div>' +
+      '<div class="t">' + (title ? title.textContent : "") + '</div>';
+    card.addEventListener("click", function () { toggleOverview(false); show(i); });
+    card.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { toggleOverview(false); show(i); }
+    });
+    grid.appendChild(card);
+  });
+
+  function show(i) {
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach(function (s, j) { s.classList.toggle("active", j === current); });
+    hud.textContent = (current + 1) + " / " + slides.length;
+    bar.style.width = (100 * (current + 1) / slides.length) + "%";
+    var aside = slides[current].querySelector("aside.notes");
+    notesBody.innerHTML = aside ? aside.innerHTML : "<p>(no notes)</p>";
+    location.hash = "#/" + (current + 1);
+  }
+
+  function toggleNotes() { notes.classList.toggle("open"); }
+  function toggleOverview(force) {
+    var open = typeof force === "boolean" ? force : !overview.classList.contains("open");
+    overview.classList.toggle("open", open);
+  }
+
+  function fit() {
+    var scale = Math.min(window.innerWidth / 990, window.innerHeight / 580);
+    slides.forEach(function (s) { s.style.setProperty("--scale", Math.min(scale, 1.6)); });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { e.preventDefault(); show(current + 1); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); show(current - 1); }
+    else if (e.key === "Home") { show(0); }
+    else if (e.key === "End") { show(slides.length - 1); }
+    else if (e.key === "n" || e.key === "N") { toggleNotes(); }
+    else if (e.key === "o" || e.key === "O") { toggleOverview(); }
+    else if (e.key === "Escape") { toggleOverview(false); }
+  });
+  document.getElementById("stage").addEventListener("click", function (e) {
+    if (window.getSelection().toString()) return;
+    show(current + (e.clientX > window.innerWidth / 2 ? 1 : -1));
+  });
+  window.addEventListener("resize", fit);
+
+  fit();
+  var start = parseInt((location.hash.match(/#\/(\d+)/) || [])[1], 10);
+  show(isNaN(start) ? 0 : start - 1);
+})();
+</script>
+</body>
+</html>
